@@ -1,0 +1,110 @@
+{{ result|json_script:"result-data" }}
+
+<div class="map-container">
+    <div id="map" role="application" aria-label="Route map with fuel stops"></div>
+</div>
+<div class="sidebar" role="complementary" aria-label="Route summary and fuel stops">
+    <h3>Route Summary</h3>
+    <div class="summary-stats">
+        <div class="stat">
+            <span class="label">Total Distance</span>
+            <span class="value">{{ result.route.distance_miles|floatformat:1 }} mi</span>
+        </div>
+        <div class="stat">
+            <span class="label">Total Fuel Cost</span>
+            <span class="value highlight">$ {{ result.totals.fuel_cost_usd|floatformat:2 }}</span>
+        </div>
+        <div class="stat">
+            <span class="label">Gallons to Purchase</span>
+            <span class="value">{{ result.totals.fuel_gallons_purchased|floatformat:1 }} gal</span>
+        </div>
+        <div class="stat">
+            <span class="label">Number of Stops</span>
+            <span class="value">{{ result.totals.stop_count }}</span>
+        </div>
+    </div>
+
+    <h3>Fuel Stops</h3>
+    <ul class="stops-list">
+        {% for stop in result.stops %}
+        <li class="stop-item">
+            <div class="stop-number">{{ forloop.counter }}</div>
+            <div class="stop-details">
+                <strong>{{ stop.station_name }}</strong>
+                <div class="stop-meta">
+                    Mile {{ stop.route_distance|floatformat:1 }} &bull;
+                    {{ stop.gallons_purchased|floatformat:1 }} gal @ ${{ stop.price_per_gallon|floatformat:2 }}
+                </div>
+                <div class="stop-cost">Cost: ${{ stop.cost_usd|floatformat:2 }}</div>
+            </div>
+        </li>
+        {% empty %}
+        <li class="stop-item">No fuel stops needed for this route!</li>
+        {% endfor %}
+    </ul>
+
+    {% if result.warnings %}
+    <div class="warnings" role="alert">
+        <h4>⚠️ Warnings</h4>
+        <ul>
+            {% for warning in result.warnings %}
+            <li>{{ warning }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    <!-- Export Actions -->
+    <div class="export-actions" style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--border);">
+        <h4>Export Route</h4>
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <a href="{% url 'export_plan_csv' result.plan_id %}" class="btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.875rem;">Download CSV</a>
+            <a href="{% url 'export_plan_geojson' result.plan_id %}" class="btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.875rem;">Download GeoJSON</a>
+            <button onclick="printSummary()" class="btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.875rem; background: var(--bg); border: 1px solid var(--border);">Print Summary</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Safely parse the JSON script tag to avoid Python dict syntax errors in JS
+    const resultData = JSON.parse(document.getElementById('result-data').textContent);
+    document.body.dispatchEvent(new CustomEvent('updateMap', { detail: resultData }));
+
+    function printSummary() {
+        const data = resultData;
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write(`
+            <html>
+            <head>
+                <title>FuelRoute Pro - Route Summary</title>
+                <style>
+                    body { font-family: sans-serif; padding: 2rem; max-width: 800px; margin: 0 auto; }
+                    h1 { color: #2563eb; }
+                    .stop { border-bottom: 1px solid #eee; padding: 1rem 0; }
+                    .stop:last-child { border-bottom: none; }
+                    .total { font-weight: bold; font-size: 1.2rem; color: #16a34a; margin-top: 1rem; }
+                    @media print { .no-print { display: none; } }
+                </style>
+            </head>
+            <body>
+                <h1>FuelRoute Pro - Route Summary</h1>
+                <p><strong>Route:</strong> ${data.start.query} → ${data.finish.query}</p>
+                <p><strong>Distance:</strong> ${data.route.distance_miles.toFixed(1)} miles</p>
+                <p><strong>Total Cost:</strong> $${data.totals.fuel_cost_usd.toFixed(2)}</p>
+                <p><strong>Gallons:</strong> ${data.totals.fuel_gallons_purchased.toFixed(1)} gal</p>
+                <p><strong>Stops:</strong> ${data.totals.stop_count}</p>
+                <h2>Fuel Stops</h2>
+                ${data.stops.map((stop, i) => `
+                    <div class="stop">
+                        <strong>Stop ${i+1}: ${stop.station_name}</strong><br>
+                        Mile ${stop.route_distance.toFixed(1)} | ${stop.gallons_purchased.toFixed(1)} gal @ $${stop.price_per_gallon.toFixed(2)}/gal = $${stop.cost_usd.toFixed(2)}
+                    </div>
+                `).join('')}
+                <div class="total">Total: $${data.totals.fuel_cost_usd.toFixed(2)}</div>
+                <button class="no-print" onclick="window.print()" style="margin-top: 1rem; padding: 0.5rem 1rem;">Print</button>
+            </body>
+            </html>
+        `);
+        printWindow.document.close();
+    }
+</script>

@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: fuelroute_test
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-django pytest-cov
+      - name: Run tests with SQLite (default)
+        env:
+          DJANGO_SETTINGS_MODULE: fuelroute.settings.development
+          SECRET_KEY: test-secret-key-for-ci
+        run: |
+          python manage.py migrate --noinput
+          pytest tests/ --cov=core --cov-report=xml -v
+      - name: Run tests with PostgreSQL
+        if: always()
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/fuelroute_test
+          CACHES_REDIS_URL: redis://localhost:6379/0
+          DJANGO_SETTINGS_MODULE: fuelroute.settings.production
+          SECRET_KEY: test-secret-key-for-ci
+          DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,0.0.0.0
+        run: |
+          python manage.py migrate --noinput
+          pytest tests/ --cov=core --cov-report=xml -v
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
+      - name: Lint
+        run: |
+          pip install flake8 black isort
+          flake8 core/ tests/ --max-line-length=120 --ignore=E501,W503
+          black --check core/ tests/
+          isort --check-only core/ tests/
+
+  docker:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t fuelroute-pro:${{ github.sha }} .
+      - name: Run container test
+        run: |
+          docker run --rm -d -p 8000:8000 \
+            -e DATABASE_URL=sqlite:///test.db \
+            -e DJANGO_SECRET_KEY=test \
+            -e DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0 \
+            fuelroute-pro:${{ github.sha }}
+          sleep 10
+          curl -f http://localhost:8000/health/live/
+          curl -f http://localhost:8000/health/ready/
+          curl -f http://localhost:8000/api/v1/health/
+        timeout-minutes: 5

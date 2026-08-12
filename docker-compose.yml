@@ -1,0 +1,210 @@
+# FuelRoute Pro - Docker Compose
+# Production deployment with PostgreSQL, Redis, and monitoring
+
+version: '3.8'
+
+services:
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      # Django Settings
+      - DJANGO_SETTINGS_MODULE=fuelroute.settings.production
+      - SECRET_KEY=${SECRET_KEY:-django-insecure-dev-key-change-in-production}
+      - DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0
+      - DJANGO_CSRF_TRUSTED_ORIGINS=http://localhost:8000,http://127.0.0.1:8000
+
+      # Database (PostgreSQL)
+      - DATABASE_URL=postgresql://fuelroute:${DB_PASSWORD}@pgbouncer:6432/fuelroute
+
+      # Cache (Redis)
+      - CACHES_REDIS_URL=redis://redis:6379/0
+
+      # External APIs
+      - ROUTING_PROVIDER=osrm_public
+      - OSRM_PUBLIC_URL=https://router.project-osrm.org
+      - OSRM_SELF_HOSTED_URL=http://osrm:5000
+      - GEOCODE_PROVIDER=photon_census
+      - PHOTON_GEOCODE_URL=https://photon.komoot.io/api/
+      - CENSUS_GEOCODE_URL=https://geocoding.geo.census.gov/geocoder/locations/onelineaddress
+      - OPENROUTESERVICE_API_KEY=${OPENROUTESERVICE_API_KEY:-}
+      - GRAPHHOPPER_API_KEY=${GRAPHHOPPER_API_KEY:-}
+
+      # Sentry (optional - requires SENTRY_DSN)
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - SENTRY_ENVIRONMENT=production
+      - APP_VERSION=${APP_VERSION:-latest}
+
+      # Email (SendGrid)
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY:-}
+      - DEFAULT_FROM_EMAIL=${DEFAULT_FROM_EMAIL:-noreply@fuelroute.pro}
+
+      # Defaults
+      - DEFAULT_RANGE_MILES=500
+      - DEFAULT_MPG=10
+      - DEFAULT_START_FUEL_GALLONS=0
+      - STATION_BUFFER_MILES=25
+      - MAX_STATIONS_PER_ROUTE=5000
+      - HTTP_TIMEOUT_SECONDS=10
+      - CACHE_TIMEOUT_SECONDS=86400
+
+    volumes:
+      - ./data:/app/data
+      - ./static:/app/static
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/live/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # PostgreSQL Database (Production)
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: fuelroute
+      POSTGRES_USER: fuelroute
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-fuelroute_secure_password_here}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fuelroute -d fuelroute"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1G
+
+  # Redis Cache (Production)
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # PgBouncer Connection Pooler (Production)
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    environment:
+      DATABASE_URL: postgres://fuelroute:${DB_PASSWORD:-fuelroute_secure_password_here}@db:5432/fuelroute
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 1000
+      DEFAULT_POOL_SIZE: 25
+      RESERVE_POOL_SIZE: 5
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+
+  # Self-hosted OSRM (Production)
+  osrm:
+    image: ghcr.io/project-osrm/osrm-backend:latest
+    command: >
+      sh -c "osrm-extract -p /opt/car.lua /data/us-latest.osm.pbf &&
+             osrm-partition /data/us-latest.osrm &&
+             osrm-customize /data/us-latest.osrm &&
+             osrm-routed --algorithm mld /data/us-latest.osrm"
+    volumes:
+      - osrm_data:/data
+      - ./osrm-profile:/opt:ro
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:5000/route/v1/driving/-87.6,41.8;-87.5,41.9"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 300s
+    profiles:
+      - production
+
+  # Automated PostgreSQL Backups (Production)
+  backup:
+    image: prodrigestivill/postgres-backup-local:16
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_DB: fuelroute
+      POSTGRES_USER: fuelroute
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-fuelroute_secure_password_here}
+      BACKUP_NUM_KEEP: 30
+      BACKUP_FREQUENCY: 1d
+      BACKUP_TIME: "02:00"
+      # Optional: S3 backup
+      # S3_BUCKET: ${BACKUP_S3_BUCKET}
+      # AWS_ACCESS_KEY_ID: ${BACKUP_AWS_KEY}
+      # AWS_SECRET_ACCESS_KEY: ${BACKUP_AWS_SECRET}
+      # AWS_DEFAULT_REGION: ${BACKUP_AWS_REGION:-us-east-1}
+    volumes:
+      - ./backups:/backups
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Prometheus Metrics
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+  # Grafana Dashboards
+  grafana:
+    image: grafana/grafana:11.0.0
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana-dashboards:/etc/grafana/provisioning/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+volumes:
+  postgres_data:
+  redis_data:
+  osrm_data:
+  prometheus_data:
+  grafana_data:

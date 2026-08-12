@@ -34,6 +34,7 @@ db.sqlite3-journal
 
 # Environment
 .env
+.env.example
 .venv
 
 # IDE
@@ -43,3 +44,14 @@ db.sqlite3-journal
 *.swo
 *~
 .DS_Store
+
+# Testing & Coverage
+.coverage
+.pytest_cache/
+htmlcov/
+.coverage.*
+.cache/
+
+# OS files
+Thumbs.db
+ehthumbs.db

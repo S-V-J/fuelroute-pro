@@ -1,0 +1,97 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard - FuelRoute Pro{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Welcome back, {{ user.username }}!</h2>
+        {% if default_vehicle %}
+            <span class="badge bg-secondary">Default: {{ default_vehicle.name }} ({{ default_vehicle.mpg }} MPG)</span>
+        {% else %}
+            <a href="/admin/core/vehicleprofile/add/" class="btn btn-sm btn-outline-primary">Add Vehicle Profile</a>
+        {% endif %}
+    </div>
+
+    <!-- Stats Tiles -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-white bg-primary mb-3">
+                <div class="card-body">
+                    <h5 class="card-title">Total Routes</h5>
+                    <p class="card-text display-6">{{ total_routes }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-success mb-3">
+                <div class="card-body">
+                    <h5 class="card-title">Est. Savings</h5>
+                    <p class="card-text display-6">${{ estimated_savings }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-info mb-3">
+                <div class="card-body">
+                    <h5 class="card-title">Gallons Optimized</h5>
+                    <p class="card-text display-6">{{ total_gallons }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-warning mb-3">
+                <div class="card-body">
+                    <h5 class="card-title">Total Cost</h5>
+                    <p class="card-text display-6">${{ total_cost }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Activity -->
+    <div class="card shadow-sm">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Recent Activity</h5>
+            <a href="{% url 'home' %}" class="btn btn-sm btn-primary">Plan New Route</a>
+        </div>
+        <div class="card-body p-0">
+            {% if recent_plans %}
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Date</th>
+                                <th>Route</th>
+                                <th>Distance</th>
+                                <th>Stops</th>
+                                <th>Total Cost</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for plan in recent_plans %}
+                            <tr>
+                                <td>{{ plan.created_at|date:"M d, Y" }}</td>
+                                <td>{{ plan.start_query }} → {{ plan.finish_query }}</td>
+                                <td>{{ plan.distance_miles|floatformat:1 }} mi</td>
+                                <td>{{ plan.stops.count }}</td>
+                                <td>${{ plan.total_cost_usd|floatformat:2 }}</td>
+                                <td>
+                                    <a href="{% url 'export_plan_csv' plan.id %}" class="btn btn-sm btn-outline-secondary">CSV</a>
+                                    <a href="{% url 'export_plan_geojson' plan.id %}" class="btn btn-sm btn-outline-secondary ms-1">GeoJSON</a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="text-center py-5 text-muted">
+                    <p>No routes planned yet. <a href="{% url 'home' %}">Plan your first route!</a></p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

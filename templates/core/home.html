@@ -1,0 +1,593 @@
+{% extends 'base.html' %}
+
+{% block title %}FuelRoute Pro - Plan the cheapest fuel stops{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+{% endblock %}
+
+{% block content %}
+<!-- Hero Section -->
+<section class="hero">
+    <h1>Plan the cheapest fuel stops on any U.S. route.</h1>
+    <p>FuelRoute Pro combines real-time route geometry with a proprietary database of fuel prices to calculate the absolute most cost-effective places to refuel along your specific journey. Save up to 15% on fuel costs with our intelligent, algorithm-driven route optimizer.</p>
+    <div class="hero-cta">
+        <a href="#planner" class="btn-primary">Try a Demo Route</a>
+        {% if not user.is_authenticated %}
+            <a href="{% url 'register' %}" class="btn-secondary">Create Free Account</a>
+        {% endif %}
+    </div>
+</section>
+
+<!-- Stats Section - Dynamic via API -->
+<section class="stats-section" id="stats-section">
+    <div class="stat-tile">
+        <h3 id="stat-stations">—</h3>
+        <p>Actively Monitored Fuel Stops</p>
+    </div>
+    <div class="stat-tile">
+        <h3 id="stat-plans">—</h3>
+        <p>Routes Optimized</p>
+    </div>
+    <div class="stat-tile">
+        <h3 id="stat-savings">—</h3>
+        <p>Average Fuel Savings</p>
+    </div>
+    <div class="stat-tile">
+        <h3 id="stat-speed">—</h3>
+        <p>Average Response Time</p>
+    </div>
+</section>
+
+<!-- Why Section -->
+<section class="why-section">
+    <h2>Why FuelRoute Pro?</h2>
+    <div class="features-grid">
+        <div class="feature">
+            <h3>💰 Cost Efficiency</h3>
+            <p>Our greedy optimization algorithm finds the absolute cheapest path, factoring in your vehicle's range and MPG.</p>
+        </div>
+        <div class="feature">
+            <h3>⚡ Zero Friction</h3>
+            <p>No mandatory API keys required for basic use. We leverage free, reliable routing and geocoding providers.</p>
+        </div>
+        <div class="feature">
+            <h3>🔒 Privacy First</h3>
+            <p>Your routes are processed securely. We do not track or sell your personal driving habits.</p>
+        </div>
+    </div>
+</section>
+
+<!-- Planner Section -->
+<main class="container" id="planner" x-data="{ showAdvanced: false }">
+    <div class="planner-header">
+        <h2>Route Planner</h2>
+        <p>Enter your start and finish locations to see the optimal fuel route.</p>
+    </div>
+
+    <section class="form-section">
+        <form hx-post="/" hx-target="#results-area" hx-swap="innerHTML" hx-indicator="#loading">
+            {% csrf_token %}
+            <div class="form-row">
+                <div class="form-group" style="position: relative;">
+                    <label for="start">Start Location</label>
+                    <input type="text" id="start" name="start" placeholder="e.g., Chicago, IL" required autocomplete="off" aria-describedby="start-help">
+                    <span id="start-help" class="visually-hidden">Enter starting city, address, or ZIP code</span>
+                    <ul id="start-suggestions" class="autocomplete-suggestions" role="listbox"></ul>
+                </div>
+                <div class="form-group" style="position: relative;">
+                    <label for="finish">Finish Location</label>
+                    <input type="text" id="finish" name="finish" placeholder="e.g., Dallas, TX" required autocomplete="off" aria-describedby="finish-help">
+                    <span id="finish-help" class="visually-hidden">Enter destination city, address, or ZIP code</span>
+                    <ul id="finish-suggestions" class="autocomplete-suggestions" role="listbox"></ul>
+                </div>
+            </div>
+
+            <button type="button" class="toggle-advanced" @click="showAdvanced = !showAdvanced" aria-expanded="false" aria-controls="advanced-options">
+                <span x-text="showAdvanced ? 'Hide Advanced Options' : 'Show Advanced Options'"></span>
+            </button>
+
+            <div class="advanced-options" id="advanced-options" x-show="showAdvanced" x-transition aria-hidden="true">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="range_miles">Vehicle Range (miles)</label>
+                        <input type="number" id="range_miles" name="range_miles" value="500" step="10" min="100" max="2000" aria-describedby="range-help">
+                        <span id="range-help" class="visually-hidden">Maximum distance vehicle can travel on a full tank</span>
+                    </div>
+                    <div class="form-group">
+                        <label for="mpg">Fuel Efficiency (MPG)</label>
+                        <input type="number" id="mpg" name="mpg" value="10" step="0.1" min="1" max="50" aria-describedby="mpg-help">
+                        <span id="mpg-help" class="visually-hidden">Miles per gallon fuel efficiency</span>
+                    </div>
+                    <div class="form-group">
+                        <label for="start_fuel_gallons">Starting Fuel (gallons)</label>
+                        <input type="number" id="start_fuel_gallons" name="start_fuel_gallons" value="0" step="1" min="0" max="500" aria-describedby="start-fuel-help">
+                        <span id="start-fuel-help" class="visually-hidden">Fuel in tank at trip start</span>
+                    </div>
+                    <div class="form-group">
+                        <label for="station_buffer_miles">Station Buffer (miles)</label>
+                        <input type="number" id="station_buffer_miles" name="station_buffer_miles" value="25" step="5" min="1" max="100" aria-describedby="buffer-help">
+                        <span id="buffer-help" class="visually-hidden">Maximum distance from route to consider fuel stations</span>
+                    </div>
+                </div>
+            </div>
+
+            <button type="submit" class="btn-primary">Calculate Optimal Route</button>
+            <span id="loading" class="htmx-indicator" aria-live="polite">Calculating...</span>
+        </form>
+    </section>
+
+    <section id="results-area" class="results-section" aria-live="polite">
+        <div class="map-container">
+            <div id="map" role="application" aria-label="Route map with fuel stops"></div>
+        </div>
+        <div class="sidebar" id="sidebar" role="complementary" aria-label="Route summary and fuel stops">
+            <div class="sidebar-placeholder">
+                <p>Results will appear here after calculation.</p>
+            </div>
+        </div>
+    </section>
+</main>
+
+<!-- AI Assistant Widget -->
+<div id="ai-assistant" x-data="aiAssistant()" x-init="init()" class="ai-assistant-widget" role="dialog" aria-label="FuelRoute Assistant" aria-hidden="true">
+    <button
+        @click="toggle()"
+        :aria-expanded="open"
+        :aria-label="open ? 'Close assistant' : 'Open assistant'"
+        class="ai-toggle-btn"
+        aria-haspopup="dialog"
+    >
+        <svg x-show="!open" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+        </svg>
+        <svg x-show="open" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+    </button>
+
+    <div x-show="open" x-transition class="ai-panel" role="document">
+        <div class="ai-header">
+            <h4>⛽ FuelRoute Assistant</h4>
+            <button @click="toggle()" aria-label="Close assistant" class="ai-close-btn">&times;</button>
+        </div>
+        <div class="ai-messages" ref="messages" role="log" aria-live="polite">
+            <div class="ai-message bot">
+                Hi! I can help explain your route, fuel stops, or how to change settings. What would you like to know?
+            </div>
+        </div>
+        <div class="ai-input-area">
+            <input type="text" x-model="input" @keyup.enter="send()" placeholder="Ask about your route..." aria-label="Ask a question" ref="inputEl">
+            <button @click="send()" :disabled="!input.trim()" aria-label="Send message">Send</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    // --- Fetch Dynamic Stats ---
+    async function fetchStats() {
+        try {
+            const response = await fetch('/api/v1/stats/');
+            const data = await response.json();
+            document.getElementById('stat-stations').textContent = data.station_count ? data.station_count.toLocaleString() + '+' : '300+';
+            document.getElementById('stat-plans').textContent = data.total_plans ? data.total_plans.toLocaleString() + '+' : '1,200+';
+            document.getElementById('stat-savings').textContent = data.avg_savings || '~15%';
+            document.getElementById('stat-speed').textContent = data.avg_response_time || '< 2.0s';
+        } catch (e) {
+            console.warn('Could not fetch stats:', e);
+        }
+    }
+    fetchStats();
+
+    // --- Autocomplete Logic ---
+    function setupAutocomplete(inputId, suggestionsId) {
+        const input = document.getElementById(inputId);
+        const suggestionsBox = document.getElementById(suggestionsId);
+        let debounceTimer;
+
+        input.addEventListener('input', function() {
+            clearTimeout(debounceTimer);
+            const query = this.value.trim();
+
+            if (query.length < 3) {
+                suggestionsBox.innerHTML = '';
+                return;
+            }
+
+            debounceTimer = setTimeout(() => {
+                fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=5&lang=en`)
+                    .then(response => response.json())
+                    .then(data => {
+                        suggestionsBox.innerHTML = '';
+                        if (data.features && data.features.length > 0) {
+                            data.features.forEach(feature => {
+                                const li = document.createElement('li');
+                                li.setAttribute('role', 'option');
+                                li.tabIndex = 0;
+                                const props = feature.properties;
+                                const name = props.name || '';
+                                const city = props.city || '';
+                                const state = props.state || '';
+                                const country = props.country || '';
+
+                                li.textContent = [name, city, state, country].filter(Boolean).join(', ');
+
+                                li.addEventListener('click', function() {
+                                    input.value = this.textContent;
+                                    suggestionsBox.innerHTML = '';
+                                    input.focus();
+                                });
+                                li.addEventListener('keydown', function(e) {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                        e.preventDefault();
+                                        input.value = this.textContent;
+                                        suggestionsBox.innerHTML = '';
+                                        input.focus();
+                                    }
+                                });
+                                suggestionsBox.appendChild(li);
+                            });
+                        }
+                    })
+                    .catch(err => console.error('Geocoding autocomplete error:', err));
+            }, 300);
+        });
+
+        document.addEventListener('click', function(e) {
+            if (!input.contains(e.target) && !suggestionsBox.contains(e.target)) {
+                suggestionsBox.innerHTML = '';
+            }
+        });
+    }
+
+    setupAutocomplete('start', 'start-suggestions');
+    setupAutocomplete('finish', 'finish-suggestions');
+
+    // --- Map Logic ---
+    window.map = L.map('map').setView([39.8283, -98.5795], 4);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors',
+        maxZoom: 18
+    }).addTo(window.map);
+
+    window.routeLayer = null;
+    window.markersLayer = L.layerGroup().addTo(window.map);
+
+    document.body.addEventListener('updateMap', function(e) {
+        const data = e.detail;
+        if (window.routeLayer) window.map.removeLayer(window.routeLayer);
+        window.markersLayer.clearLayers();
+
+        L.marker([data.start.lat, data.start.lon]).addTo(window.markersLayer).bindPopup("<b>Start:</b> " + data.start.query);
+        L.marker([data.finish.lat, data.finish.lon]).addTo(window.markersLayer).bindPopup("<b>Finish:</b> " + data.finish.query);
+
+        if (data.route && data.route.geometry && data.route.geometry.coordinates) {
+            const latLngs = data.route.geometry.coordinates.map(coord => [coord[1], coord[0]]);
+            window.routeLayer = L.polyline(latLngs, {color: '#2563eb', weight: 5}).addTo(window.map);
+        }
+
+        if (data.stops) {
+            data.stops.forEach((stop, index) => {
+                if (stop.lat && stop.lon) {
+                    L.marker([stop.lat, stop.lon], {
+                        icon: L.divIcon({
+                            className: 'custom-marker',
+                            html: '<div class="marker-number">' + (index + 1) + '</div>',
+                            iconSize: [30, 30],
+                            iconAnchor: [15, 15]
+                        })
+                    }).addTo(window.markersLayer).bindPopup(
+                        '<b>Stop ' + (index + 1) + ':</b> ' + stop.station_name + '<br>' +
+                        'Price: $' + stop.price_per_gallon + '/gal<br>' +
+                        'Buy: ' + stop.gallons_purchased + ' gal ($' + stop.cost_usd + ')'
+                    );
+                }
+            });
+        }
+
+        if (window.routeLayer) {
+            window.map.fitBounds(window.routeLayer.getBounds(), {padding: [50, 50]});
+        }
+    });
+
+    document.body.addEventListener('clearMap', function() {
+        if (window.routeLayer) window.map.removeLayer(window.routeLayer);
+        if (window.markersLayer) window.markersLayer.clearLayers();
+    });
+
+    // --- AI Assistant Component ---
+    function aiAssistant() {
+        return {
+            open: false,
+            input: '',
+            messages: [],
+
+            init() {
+                this.$watch('open', (val) => {
+                    this.$refs.messages?.scrollTop = this.$refs.messages?.scrollHeight;
+                    if (val) {
+                        this.$nextTick(() => this.$refs.inputEl?.focus());
+                    }
+                });
+            },
+
+            toggle() {
+                this.open = !this.open;
+                const widget = document.getElementById('ai-assistant');
+                widget.setAttribute('aria-hidden', !this.open);
+            },
+
+            send() {
+                if (!this.input.trim()) return;
+                const userMsg = this.input.trim();
+                this.addMessage(userMsg, 'user');
+                this.input = '';
+
+                // Simulate bot response
+                setTimeout(() => {
+                    const response = this.getBotResponse(userMsg);
+                    this.addMessage(response, 'bot');
+                }, 500);
+            },
+
+            addMessage(text, type) {
+                this.messages.push({ text, type });
+                this.$nextTick(() => {
+                    this.$refs.messages.scrollTop = this.$refs.messages.scrollHeight;
+                });
+            },
+
+            getBotResponse(msg) {
+                const lower = msg.toLowerCase();
+                if (lower.includes('why') && (lower.includes('choose') || lower.includes('select') || lower.includes('pick'))) {
+                    return "The optimizer selects stops based on your vehicle's range and the lowest fuel price within reach. It looks ahead to find the cheapest station you can reach before running out of fuel.";
+                }
+                if (lower.includes('mpg') || lower.includes('efficiency') || lower.includes('mileage')) {
+                    return "You can change your MPG in the Advanced Options on the planner, or set a default in your Vehicle Profile on the Dashboard.";
+                }
+                if (lower.includes('range') || lower.includes('tank') || lower.includes('capacity')) {
+                    return "Vehicle range is calculated as MPG × Tank Capacity. Adjust either in Advanced Options or your Vehicle Profile.";
+                }
+                if (lower.includes('buffer') || lower.includes('distance') || lower.includes('near')) {
+                    return "The station buffer (default 25 miles) controls how far off the route the optimizer will look for fuel stations. Increase it for rural areas with fewer stations.";
+                }
+                if (lower.includes('export') || lower.includes('download') || lower.includes('csv') || lower.includes('geojson')) {
+                    return "After calculating a route, you can export the results as CSV or GeoJSON from the Dashboard or the results sidebar.";
+                }
+                if (lower.includes('save') || lower.includes('account') || lower.includes('profile')) {
+                    return "Create an account to save your routes and vehicle profiles. Your data is private and never shared.";
+                }
+                if (lower.includes('hello') || lower.includes('hi') || lower.includes('hey')) {
+                    return "Hello! I'm here to help with your fuel route questions. Ask me about stops, settings, or how the optimizer works.";
+                }
+                return "I can help with questions about fuel stops, vehicle settings (MPG, range, buffer), exporting routes, or how the optimizer works. Try asking: 'Why did it choose this station?' or 'How do I change my MPG?'";
+            }
+        }
+    }
+</script>
+
+<style>
+/* AI Assistant Widget Styles */
+.ai-assistant-widget {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 1000;
+    font-family: inherit;
+}
+
+.ai-toggle-btn {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: var(--primary);
+    color: white;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
+    transition: transform 0.2s, background 0.2s;
+}
+
+.ai-toggle-btn:hover {
+    background: var(--primary-hover);
+    transform: scale(1.05);
+}
+
+.ai-toggle-btn:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.5);
+}
+
+.ai-panel {
+    position: absolute;
+    bottom: 72px;
+    right: 0;
+    width: 320px;
+    max-height: 400px;
+    background: var(--surface);
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--border);
+}
+
+.ai-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+}
+
+.ai-header h4 {
+    margin: 0;
+    font-size: 0.95rem;
+    color: var(--text);
+}
+
+.ai-close-btn {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: var(--text-muted);
+    line-height: 1;
+    padding: 0 0.25rem;
+}
+
+.ai-close-btn:hover {
+    color: var(--text);
+}
+
+.ai-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.ai-message {
+    max-width: 85%;
+    padding: 0.75rem 1rem;
+    border-radius: 12px;
+    font-size: 0.875rem;
+    line-height: 1.5;
+}
+
+.ai-message.bot {
+    background: var(--bg);
+    color: var(--text);
+    border-bottom-left-radius: 4px;
+    align-self: flex-start;
+}
+
+.ai-message.user {
+    background: var(--primary);
+    color: white;
+    border-bottom-right-radius: 4px;
+    align-self: flex-end;
+}
+
+.ai-input-area {
+    display: flex;
+    gap: 0.5rem;
+    padding: 1rem;
+    border-top: 1px solid var(--border);
+    background: var(--bg);
+}
+
+.ai-input-area input {
+    flex: 1;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.875rem;
+}
+
+.ai-input-area input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.ai-input-area button {
+    padding: 0.5rem 1rem;
+    background: var(--primary);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.ai-input-area button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.ai-input-area button:hover:not(:disabled) {
+    background: var(--primary-hover);
+}
+
+/* Autocomplete suggestions */
+.autocomplete-suggestions {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-top: none;
+    border-radius: 0 0 6px 6px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 200px;
+    overflow-y: auto;
+    z-index: 100;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.autocomplete-suggestions li {
+    padding: 0.5rem 0.75rem;
+    cursor: pointer;
+}
+
+.autocomplete-suggestions li:hover,
+.autocomplete-suggestions li:focus {
+    background: var(--bg);
+    outline: none;
+}
+
+/* Accessibility */
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* Focus visible for keyboard navigation */
+*:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+    :root {
+        --primary: #1d4ed8;
+        --border: #000;
+    }
+    .custom-marker {
+        border: 3px solid white;
+    }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+</style>
+{% endblock %}

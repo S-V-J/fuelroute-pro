@@ -1,0 +1,15 @@
+<div class="map-container">
+    <div id="map" role="application" aria-label="Route map"></div>
+</div>
+<div class="sidebar" role="complementary" aria-label="Error details">
+    <div class="error-box" role="alert">
+        <h3>❌ Route Calculation Failed</h3>
+        <p>{{ error }}</p>
+        <p>Please check your start and finish locations and try again.</p>
+        <p><small>Tip: Try increasing the station buffer in Advanced Options if traveling through rural areas.</small></p>
+    </div>
+</div>
+<script>
+    // Tell the parent window to clear the map markers and routes
+    document.body.dispatchEvent(new CustomEvent('clearMap'));
+</script>
