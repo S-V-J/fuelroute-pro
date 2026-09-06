@@ -175,7 +175,7 @@ def get_driving_route(start_lat: float, start_lon: float, finish_lat: float, fin
     providers = _get_routing_providers()
 
     for provider_name, provider_config in providers:
-        if provider_name == 'osrm_local' and not OSRM_CIRCUIT_BREAKER.allow_request():
+        if provider_name in ('osrm_local', 'osrm_public') and not OSRM_CIRCUIT_BREAKER.allow_request():
             logger.warning("Self-hosted OSRM circuit breaker open — trying next provider.")
             continue
         elif provider_name == 'openrouteservice' and not ORS_CIRCUIT_BREAKER.allow_request():

@@ -1,6 +1,4 @@
-"""
-Pytest configuration for FuelRoute Pro tests.
-"""
+"""Pytest configuration for FuelRoute Pro tests."""
 import pytest
 import django
 from django.conf import settings
@@ -45,6 +43,15 @@ def pytest_configure(config):
             REST_FRAMEWORK={
                 'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
                 'PAGE_SIZE': 50,
+                'DEFAULT_THROTTLE_CLASSES': [
+                    'rest_framework.throttling.AnonRateThrottle',
+                    'rest_framework.throttling.UserRateThrottle',
+                ],
+                'DEFAULT_THROTTLE_RATES': {
+                    'anon': '60/minute',
+                    'user': '300/minute',
+                    'plan': '30/minute',
+                },
             },
             TEMPLATES=[{
                 'BACKEND': 'django.template.backends.django.DjangoTemplates',
