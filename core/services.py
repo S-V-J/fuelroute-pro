@@ -327,9 +327,9 @@ def _route_graphhopper(api_key: str, slat: float, slon: float, flat: float, flon
     data = response.json()
     if data.get('paths'):
         path = data['paths'][0]
-        # GraphHopper returns coordinates as [lon, lat] in geojson format
+        # GraphHopper returns coordinates as [lon, lat] in geojson format or encoded string
         geometry = path['points']
-        if geometry.get('type') == 'LineString':
+        if isinstance(geometry, dict) and geometry.get('type') == 'LineString':
             coords = geometry['coordinates']
         else:
             # Decode if encoded

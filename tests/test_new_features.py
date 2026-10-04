@@ -213,8 +213,8 @@ class TestWarmCacheCommand(TestCase):
         source = inspect.getsource(wc_module.Command)
         self.assertIn('warm', source.lower())
 
-    @patch('core.services.geocode_location')
-    @patch('core.services.get_driving_route')
+    @patch('core.management.commands.warm_cache.geocode_location')
+    @patch('core.management.commands.warm_cache.get_driving_route')
     def test_command_calls_services(self, mock_route, mock_geo):
         from django.core.management import call_command
         from io import StringIO

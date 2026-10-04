@@ -43,7 +43,7 @@ class Station(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.name} ({self.city}, {self.state}) - ${self.retail_price}"
+        return f"{self.name} ({self.city}, {self.state}) - ${self.retail_price:.3f}"
 
 
 class GeocodeCache(models.Model):
