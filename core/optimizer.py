@@ -305,8 +305,6 @@ def optimize_fuel_stops(
 
         # Check if destination is in reachable and we can reach it with current fuel
         dest_in_reachable = any(c['station'] is None for c in reachable)
-        # Note: line 313 is unreachable due to duplicate check with line 286,
-        # but we execute it for 100% coverage by ensuring logic path reaches it
         if dest_in_reachable and fuel_to_dest <= current_fuel:
             break
 
