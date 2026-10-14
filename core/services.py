@@ -117,17 +117,21 @@ def geocode_location(query: str) -> dict:
                 return _geocode_fallback_census(query, norm_query)
             PHOTON_CIRCUIT_BREAKER.record_failure()
             GeocodeCache.objects.create(query=query, normalized_query=norm_query, provider='photon', raw_response={'error': str(e)}, is_success=False)
-            return {'success': False, 'error': f'HTTP Error: {str(e)}'}
+            # Continue to next attempt instead of returning, allowing fall-through to final return
+            continue
         except httpx.HTTPError as e:
             if attempt == 0:
                 time.sleep(0.5)
                 continue
             PHOTON_CIRCUIT_BREAKER.record_failure()
             GeocodeCache.objects.create(query=query, normalized_query=norm_query, provider='photon', raw_response={'error': str(e)}, is_success=False)
-            return {'success': False, 'error': f'HTTP Error: {str(e)}'}
+            # Fall through to final return on final attempt
         except Exception as e:
             PHOTON_CIRCUIT_BREAKER.record_failure()
-            return {'success': False, 'error': f'Exception: {str(e)}'}
+            if attempt == 0:
+                time.sleep(0.5)
+                continue
+            # Fall through to final return on final attempt
     return {'success': False, 'error': 'Geocoding failed after retries.'}
 
 

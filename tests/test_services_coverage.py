@@ -167,7 +167,7 @@ class TestGeocodeLocation(TestCase):
         result = geocode_location('Chicago, IL')
 
         self.assertFalse(result['success'])
-        self.assertIn('http error', result['error'].lower())
+        self.assertIn('geocoding failed after retries', result['error'].lower())
 
     @patch('core.services.httpx.Client')
     def test_geocode_400_fallback_to_census(self, mock_client_class):
@@ -193,7 +193,7 @@ class TestGeocodeLocation(TestCase):
         result = geocode_location('Chicago, IL')
 
         self.assertFalse(result['success'])
-        self.assertIn('exception', result['error'].lower())
+        self.assertIn('geocoding failed after retries', result['error'].lower())
 
     @patch('core.services.httpx.Client')
     def test_geocode_photon_circuit_breaker_open(self, mock_client_class):
@@ -275,9 +275,8 @@ class TestGeocodeLocation(TestCase):
 
         result = geocode_location('Chicago, IL')
         self.assertFalse(result['success'])
-        # Should return HTTP Error from the HTTPStatusError on second attempt
-        self.assertIn('http error', result['error'].lower())
-        self.assertIn('400 bad request', result['error'].lower())
+        # Both errors now fall through to final return
+        self.assertIn('geocoding failed after retries', result['error'].lower())
         # Verify we attempted twice
         self.assertEqual(mock_client.get.call_count, 2)
 
@@ -295,9 +294,8 @@ class TestGeocodeLocation(TestCase):
 
         result = geocode_location('Chicago, IL')
         self.assertFalse(result['success'])
-        # Second HTTPError is returned (recorded as failure and returned)
-        self.assertIn('http error', result['error'].lower())
-        self.assertIn('final error', result['error'].lower())
+        # Both errors now fall through to final return
+        self.assertIn('geocoding failed after retries', result['error'].lower())
 
     @patch('core.services.httpx.Client')
     def test_geocode_http_error_after_retry(self, mock_client_class):
@@ -314,7 +312,7 @@ class TestGeocodeLocation(TestCase):
         result = geocode_location('Chicago, IL')
 
         self.assertFalse(result['success'])
-        self.assertIn('http error', result['error'].lower())
+        self.assertIn('geocoding failed after retries', result['error'].lower())
         # Should have recorded failure and created cache entry
         cache = GeocodeCache.objects.filter(provider='photon', is_success=False).first()
         self.assertIsNotNone(cache)

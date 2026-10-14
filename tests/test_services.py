@@ -116,7 +116,7 @@ class TestGeocodeLocation(TestCase):
         result = geocode_location(self.query)
 
         self.assertFalse(result['success'])
-        self.assertTrue('HTTP Error' in result['error'] or 'unavailable' in result['error'])
+        self.assertTrue('Geocoding failed after retries' in result['error'])
         cache = GeocodeCache.objects.first()
         self.assertFalse(cache.is_success)
 
@@ -132,7 +132,7 @@ class TestGeocodeLocation(TestCase):
         result = geocode_location(self.query)
 
         self.assertFalse(result['success'])
-        self.assertTrue('Exception' in result['error'] or 'unavailable' in result['error'])
+        self.assertTrue('Geocoding failed after retries' in result['error'])
 
 
 class TestGetDrivingRoute(TestCase):

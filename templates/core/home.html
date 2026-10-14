@@ -4,6 +4,77 @@
 
 {% block extra_head %}
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script>
+    // --- AI Assistant Component Definition (must be in head for x-data to work) ---
+    function aiAssistant() {
+        return {
+            open: false,
+            input: '',
+            messages: [],
+
+            init() {
+                this.$watch('open', (val) => {
+                    this.$refs.messages?.scrollTop = this.$refs.messages?.scrollHeight;
+                    if (val) {
+                        this.$nextTick(() => this.$refs.inputEl?.focus());
+                    }
+                });
+            },
+
+            toggle() {
+                this.open = !this.open;
+                const widget = document.getElementById('ai-assistant');
+                widget.setAttribute('aria-hidden', !this.open);
+            },
+
+            send() {
+                if (!this.input.trim()) return;
+                const userMsg = this.input.trim();
+                this.addMessage(userMsg, 'user');
+                this.input = '';
+
+                // Simulate bot response
+                setTimeout(() => {
+                    const response = this.getBotResponse(userMsg);
+                    this.addMessage(response, 'bot');
+                }, 500);
+            },
+
+            addMessage(text, type) {
+                this.messages.push({ text, type });
+                this.$nextTick(() => {
+                    this.$refs.messages.scrollTop = this.$refs.messages.scrollHeight;
+                });
+            },
+
+            getBotResponse(msg) {
+                const lower = msg.toLowerCase();
+                if (lower.includes('why') && (lower.includes('choose') || lower.includes('select') || lower.includes('pick'))) {
+                    return "The optimizer selects stops based on your vehicle's range and the lowest fuel price within reach. It looks ahead to find the cheapest station you can reach before running out of fuel.";
+                }
+                if (lower.includes('mpg') || lower.includes('efficiency') || lower.includes('mileage')) {
+                    return "You can change your MPG in the Advanced Options on the planner, or set a default in your Vehicle Profile on the Dashboard.";
+                }
+                if (lower.includes('range') || lower.includes('tank') || lower.includes('capacity')) {
+                    return "Vehicle range is calculated as MPG × Tank Capacity. Adjust either in Advanced Options or your Vehicle Profile.";
+                }
+                if (lower.includes('buffer') || lower.includes('distance') || lower.includes('near')) {
+                    return "The station buffer (default 25 miles) controls how far off the route the optimizer will look for fuel stations. Increase it for rural areas with fewer stations.";
+                }
+                if (lower.includes('export') || lower.includes('download') || lower.includes('csv') || lower.includes('geojson')) {
+                    return "After calculating a route, you can export the results as CSV or GeoJSON from the Dashboard or the results sidebar.";
+                }
+                if (lower.includes('save') || lower.includes('account') || lower.includes('profile')) {
+                    return "Create an account to save your routes and vehicle profiles. Your data is private and never shared.";
+                }
+                if (lower.includes('hello') || lower.includes('hi') || lower.includes('hey')) {
+                    return "Hello! I'm here to help with your fuel route questions. Ask me about stops, settings, or how the optimizer works.";
+                }
+                return "I can help with questions about fuel stops, vehicle settings (MPG, range, buffer), exporting routes, or how the optimizer works. Try asking: 'Why did it choose this station?' or 'How do I change my MPG?'";
+            }
+        }
+    }
+</script>
 {% endblock %}
 
 {% block content %}
@@ -298,76 +369,6 @@
         if (window.routeLayer) window.map.removeLayer(window.routeLayer);
         if (window.markersLayer) window.markersLayer.clearLayers();
     });
-
-    // --- AI Assistant Component ---
-    function aiAssistant() {
-        return {
-            open: false,
-            input: '',
-            messages: [],
-
-            init() {
-                this.$watch('open', (val) => {
-                    this.$refs.messages?.scrollTop = this.$refs.messages?.scrollHeight;
-                    if (val) {
-                        this.$nextTick(() => this.$refs.inputEl?.focus());
-                    }
-                });
-            },
-
-            toggle() {
-                this.open = !this.open;
-                const widget = document.getElementById('ai-assistant');
-                widget.setAttribute('aria-hidden', !this.open);
-            },
-
-            send() {
-                if (!this.input.trim()) return;
-                const userMsg = this.input.trim();
-                this.addMessage(userMsg, 'user');
-                this.input = '';
-
-                // Simulate bot response
-                setTimeout(() => {
-                    const response = this.getBotResponse(userMsg);
-                    this.addMessage(response, 'bot');
-                }, 500);
-            },
-
-            addMessage(text, type) {
-                this.messages.push({ text, type });
-                this.$nextTick(() => {
-                    this.$refs.messages.scrollTop = this.$refs.messages.scrollHeight;
-                });
-            },
-
-            getBotResponse(msg) {
-                const lower = msg.toLowerCase();
-                if (lower.includes('why') && (lower.includes('choose') || lower.includes('select') || lower.includes('pick'))) {
-                    return "The optimizer selects stops based on your vehicle's range and the lowest fuel price within reach. It looks ahead to find the cheapest station you can reach before running out of fuel.";
-                }
-                if (lower.includes('mpg') || lower.includes('efficiency') || lower.includes('mileage')) {
-                    return "You can change your MPG in the Advanced Options on the planner, or set a default in your Vehicle Profile on the Dashboard.";
-                }
-                if (lower.includes('range') || lower.includes('tank') || lower.includes('capacity')) {
-                    return "Vehicle range is calculated as MPG × Tank Capacity. Adjust either in Advanced Options or your Vehicle Profile.";
-                }
-                if (lower.includes('buffer') || lower.includes('distance') || lower.includes('near')) {
-                    return "The station buffer (default 25 miles) controls how far off the route the optimizer will look for fuel stations. Increase it for rural areas with fewer stations.";
-                }
-                if (lower.includes('export') || lower.includes('download') || lower.includes('csv') || lower.includes('geojson')) {
-                    return "After calculating a route, you can export the results as CSV or GeoJSON from the Dashboard or the results sidebar.";
-                }
-                if (lower.includes('save') || lower.includes('account') || lower.includes('profile')) {
-                    return "Create an account to save your routes and vehicle profiles. Your data is private and never shared.";
-                }
-                if (lower.includes('hello') || lower.includes('hi') || lower.includes('hey')) {
-                    return "Hello! I'm here to help with your fuel route questions. Ask me about stops, settings, or how the optimizer works.";
-                }
-                return "I can help with questions about fuel stops, vehicle settings (MPG, range, buffer), exporting routes, or how the optimizer works. Try asking: 'Why did it choose this station?' or 'How do I change my MPG?'";
-            }
-        }
-    }
 </script>
 
 <style>
